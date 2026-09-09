@@ -1,14 +1,24 @@
 services:
   agent:
     build: .
+    # A base so existe em amd64; num Mac Apple Silicon o Docker emula. Declarar
+    # aqui tambem (nao so no Dockerfile) silencia o aviso de runtime que apareceria
+    # em cada `up` -- o mesmo motivo do ARG la: nao assustar quem esta instalando.
+    platform: linux/amd64
     environment:
       # Quem este agente e para o leaderboard do Agent Index. Sem isso o
       # servico reporter fica de pe parado e nada aparece no indice.
       AGENT_ID: inbox
     # As credenciais de leitura de e-mail do dono. Ficam num arquivo
     # dele, fora do git e fora da imagem.
+    # `required: false` de proposito. Com o env_file obrigatorio, quem sobe o
+    # container antes de criar o .env leva `stat .env: no such file or
+    # directory` -- um erro do Docker, sobre um arquivo, antes de o agente
+    # existir. Assim o container sobe, e a falta de credencial vira uma frase
+    # do proprio agente no chat, que e onde a pessoa esta olhando.
     env_file:
-      - ./.env
+      - path: ./.env
+        required: false
     volumes:
       # `.host`, nao o caminho que o agente le: um bind carrega a posse desta
       # maquina pra dentro, e a imagem copia o arquivo pro lugar como root.

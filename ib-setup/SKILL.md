@@ -69,3 +69,20 @@ existem, nao crie de novo.
 Duas linhas: o que voce vai considerar urgente, que horas vem o resumo, e que
 voce le sem marcar nada como lido. Diga que ele pode ajustar a qualquer momento
 so falando. Nao mande resumo de teste.
+
+## Se a busca nao tem credencial
+
+O container sobe mesmo sem `.env` -- de proposito, pra que a falta vire uma
+frase sua e nao um erro do Docker sobre um arquivo. Se `$HERMES_HOME/inbox/queue/` esta
+vazio e o log do servico diz `falta IMAP_HOST no ambiente`, e isso que
+aconteceu.
+
+Diga em uma linha, sem jargao, e **nao peca a senha pelo chat**:
+
+> ainda nao consigo alcancar sua caixa: falta o arquivo `.env` na pasta do
+> agente. copia o `.env.example` pra `.env`, poe seu endereco e uma senha de
+> app, e roda `docker compose up -d` de novo. eu aviso quando o primeiro
+> correio chegar.
+
+Nao tente configurar nada por conta propria e nao siga com o resto do setup: sem
+correio, tudo que voce perguntar depois e hipotetico.
