@@ -1,0 +1,39 @@
+#!/bin/sh
+# A busca de correio: um tick a cada 300s, somente leitura, sem modelo.
+#
+# Um loop supervisionado em vez de um timer, porque aqui nao ha timer -- a
+# imagem e supervisionada pelo s6 e essa e a forma que um job periodico toma
+# debaixo dele.
+#
+# /opt/plow, nunca $HERMES_HOME/skills. Os dois carregam este script; so este e
+# root-owned. A copia na casa pertence ao uid 10000 num container em execucao,
+# entao agendar aquela rodaria o que um turno escreveu por ultimo, sozinho,
+# pra sempre, segurando a credencial do e-mail do dono.
+set -eu
+
+PATH=/command:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin
+export PATH
+
+HERMES_HOME=/var/lib/hermes
+export HERMES_HOME
+
+# Uma lista explicita, nao o diretorio inteiro. O s6 escreve o ambiente do
+# container 0600 root e este servico larga o privilegio abaixo; uma allowlist
+# nao cresce por acidente do jeito que importar tudo cresce.
+IMAP_HOST=$(cat /run/s6/container_environment/IMAP_HOST 2>/dev/null || true)
+IMAP_PORT=$(cat /run/s6/container_environment/IMAP_PORT 2>/dev/null || true)
+IMAP_USER=$(cat /run/s6/container_environment/IMAP_USER 2>/dev/null || true)
+IMAP_PASSWORD=$(cat /run/s6/container_environment/IMAP_PASSWORD 2>/dev/null || true)
+IMAP_FOLDER=$(cat /run/s6/container_environment/IMAP_FOLDER 2>/dev/null || true)
+export IMAP_HOST IMAP_PORT IMAP_USER IMAP_PASSWORD IMAP_FOLDER
+
+while :; do
+  # Nunca fatal: um longrun que crasha e respawnado num loop apertado, e isso
+  # vira um loop quente de login contra o servidor IMAP do dono -- que e como
+  # uma conta acaba bloqueada.
+  /command/s6-setuidgid hermes \
+    env HOME="$HERMES_HOME" HERMES_HOME="$HERMES_HOME" IMAP_HOST="$IMAP_HOST" IMAP_PORT="$IMAP_PORT" IMAP_USER="$IMAP_USER" IMAP_PASSWORD="$IMAP_PASSWORD" IMAP_FOLDER="$IMAP_FOLDER" \
+    /opt/hermes/.venv/bin/python3 /opt/plow/ib-shared/scripts/mailbox.py \
+    || echo "inbox-poll: a busca saiu diferente de zero; tento no proximo tick" >&2
+  /bin/sleep 300
+done
