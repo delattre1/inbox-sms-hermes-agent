@@ -27,12 +27,33 @@ IMAP_PASSWORD=$(cat /run/s6/container_environment/IMAP_PASSWORD 2>/dev/null || t
 IMAP_FOLDER=$(cat /run/s6/container_environment/IMAP_FOLDER 2>/dev/null || true)
 export IMAP_HOST IMAP_PORT IMAP_USER IMAP_PASSWORD IMAP_FOLDER
 
+# A chave de inferencia, para a busca poder ACORDAR o agente quando chega
+# correio que bate com o filtro de urgencia. Lida como root porque o s6 escreve
+# esse diretorio 0600 root e este servico larga o privilegio abaixo. Ausente e
+# tolerado: sem ela a busca segue rodando e o resumo diario vira o unico caminho.
+HERMES_CUSTOM_PLOW_API_KEY=$(cat /run/s6/container_environment/HERMES_CUSTOM_PLOW_API_KEY 2>/dev/null || true)
+export HERMES_CUSTOM_PLOW_API_KEY
+# O que o TURNO escalonado precisa, nao a sonda. Quando este servico acorda o
+# agente, o notify.py roda dentro daquele turno e recusa -- de proposito, antes
+# de postar qualquer coisa -- se a configuracao de chat estiver em branco. Sem
+# estes tres, a escalada dispara, o agente diagnostica, e a mensagem morre na
+# saida. Foi exatamente o que aconteceu no primeiro teste.
+#
+# Lidos como root porque o s6 escreve esse diretorio 0600 root, e repassados
+# explicitamente na chamada abaixo -- uma allowlist, nao o diretorio inteiro.
+PLOW_HOME_CHANNEL=$(cat /run/s6/container_environment/PLOW_HOME_CHANNEL 2>/dev/null || true)
+PLOW_AGENT_TOKEN=$(cat /run/s6/container_environment/PLOW_AGENT_TOKEN 2>/dev/null || true)
+PLOW_API_BASE=$(cat /run/s6/container_environment/PLOW_API_BASE 2>/dev/null || true)
+export PLOW_HOME_CHANNEL PLOW_AGENT_TOKEN PLOW_API_BASE
+
 while :; do
   # Nunca fatal: um longrun que crasha e respawnado num loop apertado, e isso
   # vira um loop quente de login contra o servidor IMAP do dono -- que e como
   # uma conta acaba bloqueada.
   /command/s6-setuidgid hermes \
     env HOME="$HERMES_HOME" HERMES_HOME="$HERMES_HOME" IMAP_HOST="$IMAP_HOST" IMAP_PORT="$IMAP_PORT" IMAP_USER="$IMAP_USER" IMAP_PASSWORD="$IMAP_PASSWORD" IMAP_FOLDER="$IMAP_FOLDER" \
+    HERMES_CUSTOM_PLOW_API_KEY="$HERMES_CUSTOM_PLOW_API_KEY" \
+    PLOW_HOME_CHANNEL="$PLOW_HOME_CHANNEL" PLOW_AGENT_TOKEN="$PLOW_AGENT_TOKEN" PLOW_API_BASE="$PLOW_API_BASE" \
     /opt/hermes/.venv/bin/python3 /opt/plow/ib-shared/scripts/mailbox.py \
     || echo "inbox-poll: a busca saiu diferente de zero; tento no proximo tick" >&2
   /bin/sleep 300

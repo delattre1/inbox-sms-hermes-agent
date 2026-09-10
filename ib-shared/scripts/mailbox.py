@@ -21,6 +21,62 @@ apontar isto pra caixa de entrada de um estranho:
    do que chegou, nunca instrucao pro agente.
 """
 import email, email.utils, imaplib, json, os, re, sys, time
+CONFIG = os.path.join(HOME, "inbox", "config.json")
+ESCALATE_TIMEOUT = 150
+
+
+def maybe_urgent(record, config):
+    """Um pre-filtro BARATO, em Python, so pra decidir se vale acordar o modelo.
+
+    Nao e a triagem -- quem julga urgencia e o agente, lendo a mensagem. Isto e
+    a peneira anterior: um remetente, um dominio ou uma palavra que o dono
+    marcou. Sem ela, o unico jeito de saber se chegou algo urgente seria acordar
+    o modelo, e ai o gasto vira funcao do relogio em vez do correio.
+
+    Sem regras configuradas (setup ainda nao rodou), qualquer correio novo passa
+    -- e o comportamento certo: melhor acordar a toa nos primeiros minutos do
+    que ficar mudo antes de o dono ter dito o que importa.
+
+    Quem tem List-Unsubscribe nunca passa. Newsletter nao interrompe ninguem,
+    e essa regra e barata demais pra ser paga com um turno de modelo.
+    """
+    urgent = (config or {}).get("urgent") or {}
+    if not urgent:
+        return True
+    if record.get("list_unsubscribe"):
+        return False
+    sender = (record.get("from_addr") or "").lower()
+    text = (record.get("untrusted") or "").lower()
+    if any(sender == a.lower() for a in urgent.get("from", [])):
+        return True
+    if any(sender.endswith("@" + d.lower()) or sender.endswith("." + d.lower())
+           for d in urgent.get("domains", [])):
+        return True
+    return any(term.lower() in text for term in urgent.get("subject_terms", []))
+
+
+def escalate(count):
+    """Acorda o agente porque CHEGOU correio que pode nao poder esperar.
+
+    Nunca fatal: se o turno falhar, o resumo diario ainda pega tudo. Uma busca
+    que morre porque o modelo esta fora para de buscar, que e o oposto do que
+    ela existe para fazer.
+    """
+    hermes = "/opt/hermes/bin/hermes"
+    if not os.path.exists(hermes):
+        return
+    prompt = (f"Chegaram {count} mensagens que batem com o filtro de urgencia. "
+              "Rode o ib-triage agora: julgue o que realmente nao pode esperar e, "
+              "se houver, avise pelo notify.py. Se nada for urgente de verdade, "
+              "marque como pro-resumo e responda exatamente quiet.")
+    try:
+        import subprocess
+        subprocess.run([hermes, "-z", prompt, "--skills", "ib-triage", "--cli"],
+                       capture_output=True, text=True, timeout=ESCALATE_TIMEOUT)
+    except Exception as exc:
+        print(f"mailbox: nao consegui acordar o agente ({type(exc).__name__}); "
+              f"o resumo diario ainda pega")
+
 from email.header import decode_header, make_header
 
 HOME = os.environ.get("HERMES_HOME", "/var/lib/hermes")
@@ -175,6 +231,18 @@ def main():
     write_json(MARK, {"uid": max(uids), "at": time.strftime("%Y-%m-%dT%H:%M:%S%z")})
     client.logout()
     print(f"mailbox: {written} mensagens novas na fila")
+
+    # Acordar o modelo e a parte cara, entao ela acontece por CORREIO, nao por
+    # relogio. Um cron curto que pergunta "chegou algo?" a cada poucos minutos
+    # queima o dia inteiro para responder que nao -- o agente irmao deste media
+    # 730 mil tokens em tres horas assim. Aqui a peneira e Python: so o que
+    # bate com o que o dono marcou como urgente compra um turno.
+    config = read_json(CONFIG, {})
+    candidates = sum(1 for u in uids
+                     if maybe_urgent(read_json(os.path.join(QUEUE, f"{u:09d}.json"), {}), config))
+    if candidates:
+        print(f"mailbox: {candidates} candidatas a urgente -- acordando o agente")
+        escalate(candidates)
     return 0
 
 

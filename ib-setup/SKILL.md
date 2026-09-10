@@ -47,7 +47,7 @@ Em `$HERMES_HOME/inbox/config.json`.
 ## Registrar os dois crons
 
 ```
-hermes cron create "*/15 * * * *" \
+hermes cron create "0 * * * *" \
   "Rode o ib-triage agora: se houver e-mail urgente nao avisado, avise. Se nao houver, responda exatamente quiet." \
   --name ib-triage --skill ib-triage
 
@@ -55,6 +55,13 @@ hermes cron create "0 8 * * *" \
   "Rode o ib-digest agora: resuma o que chegou desde o ultimo resumo e devolva o texto do resumo como resposta final." \
   --name ib-digest --skill ib-digest --deliver "plow_chat:${PLOW_HOME_CHANNEL}"
 ```
+
+De hora em hora, nao de quinze em quinze minutos, e isso importa: **quem acorda
+a triagem normalmente e o correio, nao o relogio**. A busca roda a cada 5 min,
+peneira em Python o que bate com o `urgent` que voce acabou de configurar, e so
+ai gasta um turno. Este cron e a rede de seguranca para quando ela nao consegue.
+Um cron curto acorda o modelo o dia inteiro para responder `quiet` -- o agente
+irmao deste mediu 730 mil tokens em tres horas assim.
 
 Os dois bracos sao diferentes de proposito. A triagem fica quieta quase sempre,
 e `--deliver` repassa TODA resposta final -- inclusive as silenciosas -- entao
